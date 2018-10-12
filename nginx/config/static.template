@@ -1,0 +1,10 @@
+server{
+  listen 80;
+  server_name static.${DOMAIN};
+  root /var/www/static;
+  index index.html;
+
+  location / {
+    try_files $uri $uri/ /index.html?$query_string;
+  }
+}

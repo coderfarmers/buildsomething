@@ -1,0 +1,102 @@
+version: '3'
+services:
+  ############################
+  # at, static
+  nginx:
+    image: nginx
+    ports:
+      - ${IP}:80:80
+    environment:
+      DOMAIN: ${DOMAIN}
+      SUBNET: ${SUBNET}
+    command:
+      - /bin/sh
+      - -c
+      - |
+        envsubst '$$DOMAIN $$SUBNET' < /etc/nginx/conf.d/api.template > /etc/nginx/conf.d/api.conf
+        envsubst '$$DOMAIN $$SUBNET' < /etc/nginx/conf.d/at.template > /etc/nginx/conf.d/at.conf
+        envsubst '$$DOMAIN $$SUBNET' < /etc/nginx/conf.d/github.template > /etc/nginx/conf.d/github.conf
+        envsubst '$$DOMAIN $$SUBNET' < /etc/nginx/conf.d/static.template > /etc/nginx/conf.d/static.conf
+        nginx -g 'daemon off;'
+    networks:
+      frontend:
+        ipv4_address: ${SUBNET}.2
+    volumes:
+      - ./nginx/config:/etc/nginx/conf.d
+      - ./at/dist:/var/www/html
+      - ./static:/var/www/static
+      - ./api/laravel:/var/www/api
+
+  ############################
+  # github
+  gitlab_hook:
+    image: node
+    working_dir: /root/github
+    command:
+      - /bin/sh
+      - -c
+      - |
+        npm i
+        node index.js
+    expose:
+      - 4000
+    networks:
+      frontend:
+        ipv4_address: ${SUBNET}.3
+    volumes:
+      - ./:/root
+
+  ############################
+  # api
+  mysql:
+    image: mysql
+    command: mysqld --default-authentication-plugin=mysql_native_password
+    environment:
+      MYSQL_DATABASE: blog
+      MYSQL_USER: blog
+      MYSQL_PASSWORD: P@ssw0rd
+      MYSQL_ROOT_PASSWORD: P@ssw0rd
+    networks:
+      frontend:
+        ipv4_address: ${SUBNET}.4
+    volumes:
+      - ./api/mysql/data:/var/lib/mysql
+      - ./api/mysql/config:/etc/mysql
+
+  php:
+    image: php:7.2-fpm
+    working_dir: /var/www/api
+    command:
+      - /bin/sh
+      - -c
+      - |
+        ./composer install
+        cp .env.example .env
+        php artisan key:generate
+        chown -R www-data storage/
+        chgrp -R www-data storage/
+        php-fpm
+    environment:
+      DB_CONNECTION: mysql
+      DB_HOST: ${SUBNET}.4
+      DB_DATABASE: blog
+      DB_USERNAME: blog
+      DB_PASSWORD: P@ssw0rd
+      HOST: http://api.${DOMAIN}
+    volumes:
+      - ./api/php/config:/usr/local/etc/php
+      - ./api/php/extensions:/usr/local/lib/php/extensions/no-debug-non-zts-20170718
+      - ./api/laravel:/var/www/api
+    networks:
+      frontend:
+        ipv4_address: ${SUBNET}.5
+    depends_on:
+      - mysql
+
+networks:
+  frontend:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: ${SUBNET}.0/24

@@ -1,0 +1,11 @@
+upstream github{
+  server ${SUBNET}.3:4000;
+}
+
+server{
+  listen 80;
+  server_name github.${DOMAIN};
+  location / {
+    proxy_pass http://github;
+  }
+}
